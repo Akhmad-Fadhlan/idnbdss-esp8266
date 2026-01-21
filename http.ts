@@ -153,8 +153,9 @@ namespace esp8266 {
     //% url.defl="http://192.168.1.100/api/data"
     //% body.defl='{"temp":25}'
     export function httpPost(url: string, body: string): string {
-        return httpRequest("POST", url, body)
+        return httpRequest("POST", url, body, "application/json")
     }
+
     
     /**
      * HTTP/HTTPS POST with custom content type
@@ -180,7 +181,7 @@ namespace esp8266 {
     //% url.defl="http://192.168.1.100/api/data/1"
     //% body.defl='{"temp":30}'
     export function httpPut(url: string, body: string): string {
-        return httpRequest("PUT", url, body)
+        return httpRequest("PUT", url, body, "application/json")
     }
     
     /**
@@ -218,7 +219,7 @@ namespace esp8266 {
     //% url.defl="http://192.168.1.100/api/data/1"
     //% body.defl='{"confirm":true}'
     export function httpDeleteWithBody(url: string, body: string): string {
-        return httpRequest("DELETE", url, body)
+        return httpRequest("DELETE", url, body, "application/json")
     }
     
     // ==================== HTTP PATCH ====================
@@ -232,7 +233,7 @@ namespace esp8266 {
     //% url.defl="http://192.168.1.100/api/data/1"
     //% body.defl='{"temp":28}'
     export function httpPatch(url: string, body: string): string {
-        return httpRequest("PATCH", url, body)
+        return httpRequest("PATCH", url, body, "application/json")
     }
     
     // ==================== SPECIALIZED FUNCTIONS ====================

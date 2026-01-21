@@ -1,197 +1,348 @@
 /***************************************************
- * ESP8266 MakeCode Library - HTTP FUNCTIONS
+ * ESP8266 MakeCode Library - COMPLETE HTTP/HTTPS
+ * Support: GET, POST, PUT, DELETE for HTTP & HTTPS
  ***************************************************/
 
 namespace esp8266 {
-    // ==================== HTTP CLIENT FUNCTIONS ====================
+    
+    // ==================== HELPER FUNCTIONS ====================
     
     /**
-     * Get raw data from HTTP server
+     * Parse URL and determine protocol
+     */
+    //% blockHidden=true
+    export function parseUrl(url: string): {host: string, path: string, isHttps: boolean, port: number} {
+        let isHttps = false
+        let host = url
+        let port = 80
+        
+        // Check protocol
+        if (host.indexOf("https://") >= 0) {
+            isHttps = true
+            port = 443
+            host = host.substr(8)
+        } else if (host.indexOf("http://") >= 0) {
+            host = host.substr(7)
+        }
+        
+        // Extract path
+        let slashIndex = host.indexOf("/")
+        let path = "/"
+        if (slashIndex >= 0) {
+            path = host.substr(slashIndex)
+            host = host.substr(0, slashIndex)
+        }
+        
+        // Check for custom port
+        let colonIndex = host.indexOf(":")
+        if (colonIndex >= 0) {
+            let portStr = host.substr(colonIndex + 1)
+            host = host.substr(0, colonIndex)
+            // Parse port (simple implementation)
+            port = 0
+            for (let i = 0; i < portStr.length; i++) {
+                let char = portStr.charAt(i)
+                if (char >= "0" && char <= "9") {
+                    port = port * 10 + (char.charCodeAt(0) - 48)
+                }
+            }
+        }
+        
+        return {host: host, path: path, isHttps: isHttps, port: port}
+    }
+    
+    /**
+     * Core HTTP request function
+     */
+    //% blockHidden=true
+    export function httpRequest(
+        method: string,
+        url: string, 
+        body: string = "",
+        contentType: string = "application/json"
+    ): string {
+        if (!esp8266Initialized) return ""
+        if (!isWifiConnected()) return ""
+        
+        // Parse URL
+        let urlInfo = parseUrl(url)
+        
+        rxData = ""
+        serial.readString()
+
+        // Connect (TCP or SSL)
+        let connectionType = urlInfo.isHttps ? "SSL" : "TCP"
+        let connectCmd = "AT+CIPSTART=\"" + connectionType + "\",\"" + 
+                        urlInfo.host + "\"," + urlInfo.port
+        
+        if (!sendCommand(connectCmd, "CONNECT", 10000)) {
+            return ""
+        }
+
+        // Build HTTP request
+        let httpRequest = method + " " + urlInfo.path + " HTTP/1.1\r\n"
+        httpRequest += "Host: " + urlInfo.host + "\r\n"
+        
+        // Add body if present (POST, PUT, PATCH)
+        if (body != "") {
+            httpRequest += "Content-Type: " + contentType + "\r\n"
+            httpRequest += "Content-Length: " + body.length + "\r\n"
+        }
+        
+        httpRequest += "Connection: close\r\n\r\n"
+        
+        if (body != "") {
+            httpRequest += body
+        }
+        
+        // Send request
+        if (!sendCommand("AT+CIPSEND=" + httpRequest.length, ">", 5000)) {
+            sendCommand("AT+CIPCLOSE")
+            return ""
+        }
+
+        serial.writeString(httpRequest)
+        
+        // Wait for response
+        let start = input.runningTime()
+        let timeout = urlInfo.isHttps ? 12000 : 8000
+        while (input.runningTime() - start < timeout) {
+            rxData += serial.readString()
+            basic.pause(200)
+        }
+
+        sendCommand("AT+CIPCLOSE")
+        return rxData
+    }
+    
+    // ==================== HTTP GET ====================
+    
+    /**
+     * HTTP/HTTPS GET request
+     */
+    //% weight=90
+    //% subcategory="HTTP"
+    //% block="HTTP GET|URL %url"
+    //% url.defl="http://192.168.1.100/api/data"
+    export function httpGet(url: string): string {
+        return httpRequest("GET", url)
+    }
+    
+    /**
+     * HTTP/HTTPS GET with custom path
+     */
+    //% weight=85
+    //% subcategory="HTTP"
+    //% block="HTTP GET|host %host|path %path|HTTPS %useHttps"
+    //% host.defl="192.168.1.100"
+    //% path.defl="/api/data"
+    //% useHttps.defl=false
+    export function httpGetCustom(host: string, path: string, useHttps: boolean): string {
+        let protocol = useHttps ? "https://" : "http://"
+        return httpRequest("GET", protocol + host + path)
+    }
+    
+    // ==================== HTTP POST ====================
+    
+    /**
+     * HTTP/HTTPS POST request
      */
     //% weight=80
     //% subcategory="HTTP"
-    //% block="HTTP GET raw data|Server IP %serverIp|WiFi %ssid|Pass %password|Path %path"
-    //% serverIp.defl="192.168.1.100"
-    //% ssid.defl="YourWiFi"
-    //% password.defl="YourPassword"
-    //% path.defl="/api/data"
-    export function getRawFromServer(
-        serverIp: string,
-        ssid: string,
-        password: string,
-        path: string
-    ): string {
-        if (!esp8266Initialized) return ""
-
-        // Connect to WiFi if not connected
-        if (!isWifiConnected()) {
-            if (!connectWiFi(ssid, password)) return ""
-        }
-
-        rxData = ""
-        serial.readString()
-
-        // TCP Connection
-        if (!sendCommand(
-            "AT+CIPSTART=\"TCP\",\"" + serverIp + "\",80",
-            "CONNECT",
-            8000
-        )) return ""
-
-        let httpRequest =
-            "GET " + path + " HTTP/1.1\r\n" +
-            "Host: " + serverIp + "\r\n" +
-            "Connection: close\r\n\r\n"
-
-        if (!sendCommand("AT+CIPSEND=" + (httpRequest.length + 2), ">", 5000)) {
-            sendCommand("AT+CIPCLOSE")
-            return ""
-        }
-
-        serial.writeString(httpRequest)
-
-        let start = input.runningTime()
-        while (input.runningTime() - start < 8000) {
-            rxData += serial.readString()
-            basic.pause(200)
-        }
-
-        sendCommand("AT+CIPCLOSE")
-        return rxData
+    //% block="HTTP POST|URL %url|body %body"
+    //% url.defl="http://192.168.1.100/api/data"
+    //% body.defl='{"temp":25}'
+    export function httpPost(url: string, body: string): string {
+        return httpRequest("POST", url, body)
     }
-
+    
     /**
-     * Send data to HTTP server
+     * HTTP/HTTPS POST with custom content type
      */
     //% weight=75
     //% subcategory="HTTP"
-    //% block="HTTP send data|Server IP %serverIp|WiFi %ssid|Pass %password|Data %data"
-    //% serverIp.defl="192.168.1.100"
-    //% ssid.defl="YourWiFi"
-    //% password.defl="YourPassword"
-    //% data.defl="sensor=123"
-    export function sendToServer(
-        serverIp: string,
-        ssid: string,
-        password: string,
-        data: string
-    ): boolean {
-        if (!esp8266Initialized) return false
-
-        // Connect to WiFi if not connected
-        if (!isWifiConnected()) {
-            if (!connectWiFi(ssid, password)) return false
-        }
-
-        // TCP Connection
-        if (!sendCommand(
-            "AT+CIPSTART=\"TCP\",\"" + serverIp + "\",80",
-            "CONNECT",
-            8000
-        )) return false
-
-        let httpRequest =
-            "GET /tes.php?" + data + " HTTP/1.1\r\n" +
-            "Host: " + serverIp + "\r\n" +
-            "Connection: close\r\n\r\n"
-
-        let len = httpRequest.length + 2
-        if (!sendCommand("AT+CIPSEND=" + len, ">", 5000)) {
-            sendCommand("AT+CIPCLOSE")
-            return false
-        }
-
-        serial.writeString(httpRequest)
-        basic.pause(4000)
-        sendCommand("AT+CIPCLOSE")
-        return true
+    //% block="HTTP POST|URL %url|body %body|type %contentType"
+    //% url.defl="http://192.168.1.100/api/data"
+    //% body.defl='{"temp":25}'
+    //% contentType.defl="application/json"
+    export function httpPostCustom(url: string, body: string, contentType: string): string {
+        return httpRequest("POST", url, body, contentType)
     }
-
+    
+    // ==================== HTTP PUT ====================
+    
     /**
-     * Simple HTTP GET (WiFi must be connected first)
+     * HTTP/HTTPS PUT request
      */
     //% weight=70
     //% subcategory="HTTP"
-    //% block="simple HTTP GET|Server %serverIp|Path %path"
-    //% serverIp.defl="192.168.1.100"
-    //% path.defl="/"
-    export function httpGet(serverIp: string, path: string): string {
-        if (!esp8266Initialized) return ""
-        if (!isWifiConnected()) return ""
-        
-        rxData = ""
-        serial.readString()
-
-        // TCP Connection
-        if (!sendCommand("AT+CIPSTART=\"TCP\",\"" + serverIp + "\",80", "CONNECT", 5000)) {
-            return ""
-        }
-
-        let httpRequest = 
-            "GET " + path + " HTTP/1.1\r\n" +
-            "Host: " + serverIp + "\r\n" +
-            "Connection: close\r\n\r\n"
-        
-        if (!sendCommand("AT+CIPSEND=" + httpRequest.length, ">", 3000)) {
-            sendCommand("AT+CIPCLOSE")
-            return ""
-        }
-
-        serial.writeString(httpRequest)
-        
-        let start = input.runningTime()
-        while (input.runningTime() - start < 5000) {
-            rxData += serial.readString()
-            basic.pause(200)
-        }
-
-        sendCommand("AT+CIPCLOSE")
-        return rxData
+    //% block="HTTP PUT|URL %url|body %body"
+    //% url.defl="http://192.168.1.100/api/data/1"
+    //% body.defl='{"temp":30}'
+    export function httpPut(url: string, body: string): string {
+        return httpRequest("PUT", url, body)
     }
-
+    
     /**
-     * HTTP POST request
+     * HTTP/HTTPS PUT with custom content type
      */
     //% weight=65
     //% subcategory="HTTP"
-    //% block="HTTP POST|Server %serverIp|Path %path|Data %data"
-    //% serverIp.defl="192.168.1.100"
-    //% path.defl="/api/data"
-    //% data.defl='{"temp":25}'
-    export function httpPost(serverIp: string, path: string, data: string): string {
-        if (!esp8266Initialized) return ""
-        if (!isWifiConnected()) return ""
+    //% block="HTTP PUT|URL %url|body %body|type %contentType"
+    //% url.defl="http://192.168.1.100/api/data/1"
+    //% body.defl='{"temp":30}'
+    //% contentType.defl="application/json"
+    export function httpPutCustom(url: string, body: string, contentType: string): string {
+        return httpRequest("PUT", url, body, contentType)
+    }
+    
+    // ==================== HTTP DELETE ====================
+    
+    /**
+     * HTTP/HTTPS DELETE request
+     */
+    //% weight=60
+    //% subcategory="HTTP"
+    //% block="HTTP DELETE|URL %url"
+    //% url.defl="http://192.168.1.100/api/data/1"
+    export function httpDelete(url: string): string {
+        return httpRequest("DELETE", url)
+    }
+    
+    /**
+     * HTTP/HTTPS DELETE with body
+     */
+    //% weight=55
+    //% subcategory="HTTP"
+    //% block="HTTP DELETE|URL %url|body %body"
+    //% url.defl="http://192.168.1.100/api/data/1"
+    //% body.defl='{"confirm":true}'
+    export function httpDeleteWithBody(url: string, body: string): string {
+        return httpRequest("DELETE", url, body)
+    }
+    
+    // ==================== HTTP PATCH ====================
+    
+    /**
+     * HTTP/HTTPS PATCH request
+     */
+    //% weight=50
+    //% subcategory="HTTP"
+    //% block="HTTP PATCH|URL %url|body %body"
+    //% url.defl="http://192.168.1.100/api/data/1"
+    //% body.defl='{"temp":28}'
+    export function httpPatch(url: string, body: string): string {
+        return httpRequest("PATCH", url, body)
+    }
+    
+    // ==================== SPECIALIZED FUNCTIONS ====================
+    
+    /**
+     * Send sensor data to server (POST JSON)
+     */
+    //% weight=45
+    //% subcategory="HTTP"
+    //% block="POST sensor data|URL %url|temp %temp|humid %humid|light %light"
+    //% url.defl="http://192.168.1.100/api/sensor"
+    //% temp.defl=25
+    //% humid.defl=60
+    //% light.defl=500
+    export function postSensorData(url: string, temp: number, humid: number, light: number): boolean {
+        let json = "{\"temperature\":" + temp + 
+                  ",\"humidity\":" + humid + 
+                  ",\"light\":" + light + "}"
         
-        rxData = ""
-        serial.readString()
-
-        // TCP Connection
-        if (!sendCommand("AT+CIPSTART=\"TCP\",\"" + serverIp + "\",80", "CONNECT", 5000)) {
-            return ""
+        let response = httpPost(url, json)
+        return response.indexOf("200") >= 0 || response.indexOf("201") >= 0
+    }
+    
+    /**
+     * POST to Google Apps Script (HTTPS only)
+     */
+    //% weight=40
+    //% subcategory="HTTP"
+    //% block="POST to Google Script|ID %scriptId|JSON %jsonData"
+    //% scriptId.defl="YOUR_SCRIPT_ID_HERE"
+    //% jsonData.defl='{"temp":25}'
+    export function postToGoogleScript(scriptId: string, jsonData: string): boolean {
+        let url = "https://script.google.com/macros/s/" + scriptId + "/exec"
+        let response = httpPost(url, jsonData)
+        return response.indexOf("200") >= 0 || response.indexOf("302") >= 0
+    }
+    
+    /**
+     * POST sensor to Google Apps Script
+     */
+    //% weight=35
+    //% subcategory="HTTP"
+    //% block="POST sensor to Google|ID %scriptId|temp %temp|humid %humid|light %light"
+    //% scriptId.defl="YOUR_SCRIPT_ID_HERE"
+    //% temp.defl=25
+    //% humid.defl=60
+    //% light.defl=500
+    export function postSensorToGoogle(scriptId: string, temp: number, humid: number, light: number): boolean {
+        let json = "{\"temperature\":" + temp + 
+                  ",\"humidity\":" + humid + 
+                  ",\"light\":" + light + "}"
+        return postToGoogleScript(scriptId, json)
+    }
+    
+    // ==================== RESPONSE HELPERS ====================
+    
+    /**
+     * Check if HTTP response is successful (200-299)
+     */
+    //% weight=30
+    //% subcategory="HTTP"
+    //% block="HTTP success|response %response"
+    export function isHttpSuccess(response: string): boolean {
+        return response.indexOf("200") >= 0 || 
+               response.indexOf("201") >= 0 || 
+               response.indexOf("204") >= 0
+    }
+    
+    /**
+     * Extract body from HTTP response
+     */
+    //% weight=25
+    //% subcategory="HTTP"
+    //% block="extract body from|response %response"
+    export function extractBody(response: string): string {
+        // Find double CRLF (end of headers)
+        let bodyStart = response.indexOf("\r\n\r\n")
+        if (bodyStart >= 0) {
+            return response.substr(bodyStart + 4)
         }
-
-        let httpRequest = 
-            "POST " + path + " HTTP/1.1\r\n" +
-            "Host: " + serverIp + "\r\n" +
-            "Content-Type: application/json\r\n" +
-            "Content-Length: " + data.length + "\r\n" +
-            "Connection: close\r\n\r\n" +
-            data
         
-        if (!sendCommand("AT+CIPSEND=" + httpRequest.length, ">", 3000)) {
-            sendCommand("AT+CIPCLOSE")
-            return ""
+        // Alternative: find first { for JSON
+        let jsonStart = response.indexOf("{")
+        if (jsonStart >= 0) {
+            return response.substr(jsonStart)
         }
-
-        serial.writeString(httpRequest)
         
-        let start = input.runningTime()
-        while (input.runningTime() - start < 5000) {
-            rxData += serial.readString()
-            basic.pause(200)
+        return ""
+    }
+    
+    /**
+     * Get HTTP status code from response
+     */
+    //% weight=20
+    //% subcategory="HTTP"
+    //% block="get status code|response %response"
+    export function getStatusCode(response: string): number {
+        // Look for "HTTP/1.1 XXX"
+        let httpIndex = response.indexOf("HTTP/1.1 ")
+        if (httpIndex >= 0) {
+            let codeStr = response.substr(httpIndex + 9, 3)
+            let code = 0
+            for (let i = 0; i < 3; i++) {
+                let char = codeStr.charAt(i)
+                if (char >= "0" && char <= "9") {
+                    code = code * 10 + (char.charCodeAt(0) - 48)
+                }
+            }
+            return code
         }
-
-        sendCommand("AT+CIPCLOSE")
-        return rxData
+        return 0
     }
 }

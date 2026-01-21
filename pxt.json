@@ -1,6 +1,6 @@
 {    
-  "name": "ESP8266-IDN Library",
-  "version": "1.0.7",
+  "name": "idn-esp8266",
+  "version": "1.0.9",
   "description": "IDN Library for ESP82666", 
   "license": "MIT",
   "dependencies": {
@@ -9,7 +9,7 @@
   "files": [
     "main.ts",
     "firebase.ts",
-    "httpss.ts"
+    "http.ts"
   ],
   "icon": "icon.png",
   "public": true,

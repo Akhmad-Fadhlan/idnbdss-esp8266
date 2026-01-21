@@ -1,23 +1,22 @@
 /***************************************************
- * ESP8266 MakeCode Library - CORE FUNCTIONS
+ * ESP8266 MakeCode Library - CORE FUNCTIONS ONLY
  ***************************************************/
-
 namespace esp8266 {
-    // ==================== SHARED VARIABLES ====================
-    //% blockHidden=true
+    // ==================== CORE VARIABLES ====================
     export let esp8266Initialized = false
-    //% blockHidden=true
     export let rxData = ""
-    
-    // ==================== CORE FUNCTIONS ====================
-    // Internal error function
-    function error(code: number): void {
+    let wifiConnected = false
+
+    // ==================== ERROR HANDLER ====================
+    function error(code: number) {
         // debugging & LED dihilangkan
-        // basic.showNumber(code)
     }
 
+    // ==================== CORE HELPER FUNCTIONS ====================
+    /**
+     * Send AT command to ESP8266
+     */
     //% blockHidden=true
-    //% block="send AT command"
     export function sendCommand(
         command: string,
         expected: string = null,
@@ -34,54 +33,71 @@ namespace esp8266 {
             rxData += serial.readString()
             if (rxData.indexOf(expected) >= 0) return true
             if (rxData.indexOf("ERROR") >= 0) return false
-            basic.pause(10)
         }
         return false
     }
 
+    /**
+     * Get response from ESP8266 within timeout
+     */
     //% blockHidden=true
-    //% block="get response"
-    export function getResponse(terminator: string = "", timeout: number = 2000): string {
-        let response = ""
+    export function getResponse(expected: string = "", timeout: number = 1000): string {
+        rxData = ""
         let start = input.runningTime()
         
         while (input.runningTime() - start < timeout) {
-            response += serial.readString()
-            if (terminator != "" && response.indexOf(terminator) >= 0) {
-                return response
+            rxData += serial.readString()
+            if (expected != "" && rxData.indexOf(expected) >= 0) {
+                return rxData
             }
             basic.pause(50)
         }
-        return response
+        return rxData
     }
 
+    /**
+     * Check if WiFi is connected
+     */
     //% blockHidden=true
-    //% block="is WiFi connected"
     export function isWifiConnected(): boolean {
-        return sendCommand("AT+CWJAP?", "WIFI GOT IP", 1000)
+        return wifiConnected
     }
 
-    // ==================== PUBLIC API - INITIALIZATION ====================
-    //% weight=100
-    //% block="initialize ESP8266|Tx %tx Rx %rx Baud %baudrate"
-    //% tx.defl=SerialPin.P0
-    //% rx.defl=SerialPin.P1
-    //% baudrate.defl=BaudRate.BaudRate115200
-    export function init(tx: SerialPin, rx: SerialPin, baudrate: BaudRate): void {
-        serial.redirect(tx, rx, baudrate)
-        basic.pause(1000)
+    /**
+     * Set WiFi connection status
+     */
+    //% blockHidden=true
+    export function setWifiConnected(status: boolean) {
+        wifiConnected = status
+    }
 
+    // ==================== CORE PUBLIC API ====================
+    /**
+     * Initialize ESP8266 module
+     */
+    //% weight=100
+    //% block="initialize ESP8266|Tx %tx|Rx %rx|Baud %baudrate"
+    //% tx.defl=SerialPin.P8
+    //% rx.defl=SerialPin.P12
+    //% baudrate.defl=BaudRate.BaudRate115200
+    export function init(tx: SerialPin, rx: SerialPin, baudrate: BaudRate) {
+        serial.redirect(tx, rx, baudrate)
+        basic.pause(100)
+
+        // Reset ESP8266
         if (!sendCommand("AT+RST", "ready", 5000)) {
             error(1)
             return
         }
-        
-        if (!sendCommand("ATE0", "OK", 2000)) {
+
+        // Disable echo
+        if (!sendCommand("ATE0", "OK")) {
             error(2)
             return
         }
-        
-        if (!sendCommand("AT+CWMODE=1", "OK", 2000)) {
+
+        // Set to station mode
+        if (!sendCommand("AT+CWMODE=1", "OK")) {
             error(3)
             return
         }
@@ -89,10 +105,46 @@ namespace esp8266 {
         esp8266Initialized = true
     }
 
-    // ==================== EXPORT OTHER MODULES ====================
-    // Import and export HTTP functions
-    export * from "./http"
-    
-    // Import and export Firebase functions
-    export * from "./firebase"
+    /**
+     * Connect to WiFi network
+     */
+    //% weight=95
+    //% block="connect to WiFi|SSID %ssid|Password %password"
+    //% ssid.defl="YourWiFi"
+    //% password.defl="YourPassword"
+    export function connectWiFi(ssid: string, password: string): boolean {
+        if (!esp8266Initialized) return false
+
+        wifiConnected = false
+        
+        if (sendCommand(
+            "AT+CWJAP=\"" + ssid + "\",\"" + password + "\"",
+            "WIFI GOT IP",
+            20000
+        )) {
+            wifiConnected = true
+            return true
+        }
+        
+        return false
+    }
+
+    /**
+     * Check WiFi connection status
+     */
+    //% weight=90
+    //% block="WiFi connected"
+    export function isConnected(): boolean {
+        return wifiConnected
+    }
+
+    /**
+     * Disconnect from WiFi
+     */
+    //% weight=85
+    //% block="disconnect WiFi"
+    export function disconnectWiFi() {
+        sendCommand("AT+CWQAP", "OK")
+        wifiConnected = false
+    }
 }

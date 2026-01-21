@@ -1,7 +1,7 @@
 {   
   "name": "idn-esp8266",
-  "version": "1.0.9",
-  "description": "IDN Library for ESP82666", 
+  "version": "1.0.11",
+  "description": "IDN Library for ESP8266 on Microbit", 
   "license": "MIT",
   "dependencies": {
     "core": "*"

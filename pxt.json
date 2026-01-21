@@ -1,6 +1,6 @@
 {
   "name": "idn-esp8266",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "description": "ESP8266 Library for MakeCode with organized namespaces",
   "license": "MIT",
   "dependencies": {

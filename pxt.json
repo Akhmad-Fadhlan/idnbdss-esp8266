@@ -1,6 +1,6 @@
 {    
   "name": "ESP8266-IDN Library",
-  "version": "1.0.8",
+  "version": "1.0.7",
   "description": "IDN Library for ESP8266", 
   "license": "MIT",
   "dependencies": {

@@ -215,7 +215,15 @@ namespace esp8266 {
         
         sendCommand("AT+CWJAP?", "OK", 2000)
         
-        let rssiIndex = rxData.lastIndexOf(",-")
+        // Find RSSI value (search from end manually)
+        let rssiIndex = -1
+        for (let i = rxData.length - 1; i >= 0; i--) {
+            if (rxData.charAt(i) == "-" && i > 0 && rxData.charAt(i-1) == ",") {
+                rssiIndex = i - 1
+                break
+            }
+        }
+        
         if (rssiIndex >= 0) {
             let rssiStr = rxData.substr(rssiIndex + 2, 2)
             let rssi = 0
